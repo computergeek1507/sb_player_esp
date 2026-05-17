@@ -1,0 +1,11 @@
+Comment,Designator,Footprint,LCSC,Quantity
+10uF,C1,C_0805_2012Metric,C15850,1
+1k,R3,R_0603_1608Metric,C21190,1
+32.768kHz,Y1,FC-135R_L3.2-W1.5,C32346,1
+4.7K,"R1,R2",R_0603_1608Metric,C23162,2
+MY-1220-03,U2,BAT-SMD_MY-1220-03,C964818,1
+PCF8523T,U3,SOIC-8_3.9x4.9mm_P1.27mm,C2651516,1
+PCM5102A,J4,PinHeader_1x06_P2.54mm_Vertical,,1
+UDA1334A,J3,PinHeader_1x06_P2.54mm_Vertical,,1
+OLED,J2,PinSocket_1x04_P2.54mm_Vertical,,1
+Conn_02x12_Odd_Even,J1,PinSocket_2x13_P2.54mm_Vertical,,1

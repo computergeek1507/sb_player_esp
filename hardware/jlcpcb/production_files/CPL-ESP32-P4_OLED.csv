@@ -1,0 +1,12 @@
+Designator,Val,Package,Mid X,Mid Y,Rotation,Layer
+C1,10uF,C_0805_2012Metric,155.5,-95.7,0.0,bottom
+J1,Conn_02x12_Odd_Even,PinSocket_2x13_P2.54mm_Vertical,142.83,-97.0,0.0,bottom
+J2,OLED,PinSocket_1x04_P2.54mm_Vertical,147.675,-86.69,180.0,top
+J3,UDA1334A,PinHeader_1x06_P2.54mm_Vertical,136.3,-87.65,0.0,top
+J4,PCM5102A,PinHeader_1x06_P2.54mm_Vertical,136.3,-105.05,180.0,top
+R1,4.7K,R_0603_1608Metric,151.0,-91.525,90.0,bottom
+R2,4.7K,R_0603_1608Metric,152.7,-90.7,90.0,bottom
+R3,1k,R_0603_1608Metric,152.1,-95.7,180.0,bottom
+U2,MY-1220-03,BAT-SMD_MY-1220-03,156.800585,-89.999962,-90.0,top
+U3,PCF8523T,SOIC-8_3.9x4.9mm_P1.27mm,156.4,-90.7,180.0,bottom
+Y1,32.768kHz,FC-135R_L3.2-W1.5,155.1,-85.000127,0.0,bottom
