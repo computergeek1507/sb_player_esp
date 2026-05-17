@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SB Player – Outputs</title>
+<style>
+  body{font-family:sans-serif;margin:0;background:#111;color:#eee;padding:16px}
+  h1{margin:0 0 16px;font-size:1.4rem;color:#4af}
+  h2{font-size:1rem;color:#4af;margin:20px 0 8px}
+  nav a{color:#4af;margin-right:16px;text-decoration:none;font-size:.9rem}
+  .card{background:#1e1e1e;border-radius:8px;padding:16px;margin-bottom:16px}
+  table{width:100%;border-collapse:collapse;font-size:.85rem}
+  th{color:#888;text-align:left;padding:6px 4px;border-bottom:1px solid #333}
+  td{padding:5px 4px;border-bottom:1px solid #222;vertical-align:middle}
+  input,select{background:#222;color:#eee;border:1px solid #444;padding:4px 6px;border-radius:4px;width:100%;box-sizing:border-box}
+  input[type=checkbox]{width:auto}
+  input[type=number]{width:80px}
+  .ip-input{width:130px}
+  button{background:#4af;color:#000;border:none;padding:6px 14px;border-radius:5px;cursor:pointer;font-weight:bold;margin:4px 4px 4px 0}
+  button.danger{background:#f44;color:#fff}
+  button.save{background:#4a4;color:#fff}
+  #msg{color:#4f4;font-size:.9rem;margin-top:8px}
+  .hint{color:#666;font-size:.8rem;margin-bottom:8px}
+</style>
+</head>
+<body>
+<h1>SB Player &ndash; Outputs</h1>
+<nav>
+  <a href="/">Dashboard</a>
+  <a href="/config.html">Config</a>
+  <a href="/outputs.html">Outputs</a>
+  <a href="/sequences.html">Sequences</a>
+  <a href="/playlists.html">Playlists</a>
+  <a href="/schedule.html">Schedule</a>
+  <a href="/ota.html">OTA</a>
+</nav>
+
+<!-- E1.31 -->
+<div class="card">
+  <h2>E1.31 / sACN Outputs</h2>
+  <p class="hint">Each output can cover a different slice of FSEQ channels. Channel Count = 0 means all remaining channels.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>En</th><th>Univ Start</th><th>Univ Size</th>
+        <th>Ch Start</th><th>Ch Count</th>
+        <th>Multicast</th><th>Unicast IP</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="e131Body"></tbody>
+  </table>
+  <button onclick="addE131()">+ Add E1.31</button>
+</div>
+
+<!-- DDP -->
+<div class="card">
+  <h2>DDP Outputs</h2>
+  <p class="hint">DDP byte offsets are set to channelStart so each controller maps channels correctly.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>En</th><th>Destination IP</th>
+        <th>Ch Start</th><th>Ch Count</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="ddpBody"></tbody>
+  </table>
+  <button onclick="addDDP()">+ Add DDP</button>
+</div>
+
+<button class="save" onclick="save()">Save Outputs</button>
+<div id="msg"></div>
+
+<script>
+let data = { e131: [], ddp: [] };
+
+fetch('/api/outputs').then(r=>r.json()).then(d => { data=d; render(); });
+
+function e131Row(o, i) {
+  return `<tr data-i="${i}">
+    <td><input type="checkbox" class="en" ${o.enabled?'checked':''}></td>
+    <td><input type="number" class="us" value="${o.universe_start}" min="1" max="63999"></td>
+    <td><input type="number" class="uz" value="${o.universe_size}" min="1" max="512"></td>
+    <td><input type="number" class="cs" value="${o.channel_start}" min="0"></td>
+    <td><input type="number" class="cc" value="${o.channel_count}" min="0"></td>
+    <td><input type="checkbox" class="mc" ${o.multicast?'checked':''} onchange="this.closest('tr').querySelector('.uip').disabled=this.checked"></td>
+    <td><input class="uip ip-input" value="${o.unicast_ip||''}" placeholder="192.168.1.x" ${o.multicast?'disabled':''}></td>
+    <td><button class="danger" onclick="delE131(${i})">Del</button></td>
+  </tr>`;
+}
+
+function ddpRow(o, i) {
+  return `<tr data-i="${i}">
+    <td><input type="checkbox" class="en" ${o.enabled?'checked':''}></td>
+    <td><input class="ip-input" value="${o.ip||''}" placeholder="192.168.1.x"></td>
+    <td><input type="number" class="cs" value="${o.channel_start}" min="0"></td>
+    <td><input type="number" class="cc" value="${o.channel_count}" min="0"></td>
+    <td><button class="danger" onclick="delDDP(${i})">Del</button></td>
+  </tr>`;
+}
+
+function render() {
+  document.getElementById('e131Body').innerHTML = (data.e131||[]).map(e131Row).join('');
+  document.getElementById('ddpBody').innerHTML  = (data.ddp||[]).map(ddpRow).join('');
+}
+
+function addE131() {
+  data.e131.push({enabled:true,universe_start:1,universe_size:512,channel_start:0,channel_count:0,multicast:true,unicast_ip:''});
+  render();
+}
+function addDDP() {
+  data.ddp.push({enabled:true,ip:'',channel_start:0,channel_count:0});
+  render();
+}
+function delE131(i) { data.e131.splice(i,1); render(); }
+function delDDP(i)  { data.ddp.splice(i,1);  render(); }
+
+function collect() {
+  const e131 = Array.from(document.querySelectorAll('#e131Body tr')).map(r => ({
+    enabled:       r.querySelector('.en').checked,
+    universe_start:Number(r.querySelector('.us').value),
+    universe_size: Number(r.querySelector('.uz').value),
+    channel_start: Number(r.querySelector('.cs').value),
+    channel_count: Number(r.querySelector('.cc').value),
+    multicast:     r.querySelector('.mc').checked,
+    unicast_ip:    r.querySelector('.uip').value.trim()
+  }));
+  const ddp = Array.from(document.querySelectorAll('#ddpBody tr')).map(r => ({
+    enabled:       r.querySelector('.en').checked,
+    ip:            r.querySelectorAll('input')[1].value.trim(),
+    channel_start: Number(r.querySelector('.cs').value),
+    channel_count: Number(r.querySelector('.cc').value)
+  }));
+  return { e131, ddp };
+}
+
+function save() {
+  fetch('/api/outputs', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(collect())})
+    .then(r=>r.json())
+    .then(res => { document.getElementById('msg').textContent = res.ok ? 'Saved! Reboot to apply.' : 'Error: '+JSON.stringify(res); });
+}
+</script>
+</body>
+</html>

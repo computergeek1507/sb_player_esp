@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SB Player</title>
+<style>
+  body{font-family:sans-serif;margin:0;background:#111;color:#eee;padding:16px}
+  h1{margin:0 0 16px;font-size:1.4rem;color:#4af}
+  nav a{color:#4af;margin-right:16px;text-decoration:none;font-size:.9rem}
+  .card{background:#1e1e1e;border-radius:8px;padding:16px;margin-bottom:16px}
+  .row{display:flex;justify-content:space-between;margin-bottom:8px}
+  .label{color:#888;font-size:.85rem}
+  .val{font-weight:bold}
+  .playing{color:#4f4}
+  .stopped{color:#f44}
+  button{background:#4af;color:#000;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;font-weight:bold;margin:4px}
+  button.danger{background:#f44}
+  select,input{background:#222;color:#eee;border:1px solid #444;padding:6px;border-radius:4px;width:100%;box-sizing:border-box;margin-top:4px}
+  .progress{background:#333;border-radius:4px;height:8px;margin:8px 0}
+  .progress-bar{background:#4af;height:8px;border-radius:4px;transition:width .5s}
+  ul{list-style:none;padding:0;margin:0}
+  li{padding:8px;border-bottom:1px solid #333;display:flex;align-items:center;justify-content:space-between}
+  li button{padding:4px 12px;font-size:.8rem}
+</style>
+</head>
+<body>
+<h1>SB Player</h1>
+<nav>
+  <a href="/">Dashboard</a>
+  <a href="/config.html">Config</a>
+  <a href="/outputs.html">Outputs</a>
+  <a href="/sequences.html">Sequences</a>
+  <a href="/playlists.html">Playlists</a>
+  <a href="/schedule.html">Schedule</a>
+  <a href="/ota.html">OTA</a>
+</nav>
+
+<div class="card">
+  <div class="row"><span class="label">Status</span><span id="status" class="val stopped">STOPPED</span></div>
+  <div class="row"><span class="label">Sequence</span><span id="seq" class="val">—</span></div>
+  <div class="row"><span class="label">Audio</span><span id="audio" class="val">—</span></div>
+  <div class="row"><span class="label">Frame</span><span id="frame" class="val">0 / 0</span></div>
+  <div class="row"><span class="label">FPS</span><span id="fps" class="val">0</span></div>
+  <div class="row"><span class="label">Ethernet IP</span><span id="eth_ip" class="val">—</span></div>
+  <div class="row"><span class="label">Time</span><span id="curtime" class="val">—</span></div>
+  <div class="progress"><div class="progress-bar" id="prog" style="width:0%"></div></div>
+  <div>
+    <button class="danger" onclick="stop()">Stop</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="label" style="margin-bottom:8px">Quick Play</div>
+  <select id="seqList"><option>Loading...</option></select>
+  <button onclick="playSelected()" style="margin-top:8px">Play</button>
+</div>
+
+<script>
+const ws = new WebSocket('ws://' + location.host + '/ws');
+ws.onmessage = e => update(JSON.parse(e.data));
+
+function update(d) {
+  document.getElementById('status').textContent = d.playing ? 'PLAYING' : 'STOPPED';
+  document.getElementById('status').className = 'val ' + (d.playing ? 'playing' : 'stopped');
+  document.getElementById('seq').textContent = d.sequence || '—';
+  document.getElementById('audio').textContent = d.audio_playing ? (d.audio || '—') : 'none';
+  document.getElementById('frame').textContent = d.frame + ' / ' + d.frame_count;
+  document.getElementById('fps').textContent = d.fps;
+  const pct = d.frame_count > 0 ? (d.frame / d.frame_count * 100).toFixed(1) : 0;
+  document.getElementById('prog').style.width = pct + '%';
+  if (d.eth_ip !== undefined)
+    document.getElementById('eth_ip').textContent = d.eth_ip || 'not connected';
+  if (d.time_epoch && d.time_epoch > 1000000000)
+    document.getElementById('curtime').textContent = new Date(d.time_epoch * 1000).toLocaleString();
+}
+
+function stop() { fetch('/api/stop', {method:'POST'}); }
+function playSelected() {
+  const f = document.getElementById('seqList').value;
+  if (f) fetch('/api/play', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({file:f})});
+}
+
+fetch('/api/sequences').then(r=>r.json()).then(data => {
+  const sel = document.getElementById('seqList');
+  const list = data.files || [];
+  if (!data.sd_ok) sel.innerHTML = '<option disabled>SD card not found</option>';
+  else if (!list.length) sel.innerHTML = '<option disabled>No sequences found</option>';
+  else sel.innerHTML = list.map(f => '<option value="'+f+'">'+f+'</option>').join('');
+});
+</script>
+</body>
+</html>

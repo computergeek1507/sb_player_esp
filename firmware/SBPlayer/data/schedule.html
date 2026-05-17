@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SB Player – Schedule</title>
+<style>
+  body{font-family:sans-serif;margin:0;background:#111;color:#eee;padding:16px}
+  h1{margin:0 0 16px;font-size:1.4rem;color:#4af}
+  nav a{color:#4af;margin-right:16px;text-decoration:none;font-size:.9rem}
+  .card{background:#1e1e1e;border-radius:8px;padding:16px;margin-bottom:16px}
+  table{width:100%;border-collapse:collapse;font-size:.9rem}
+  th{color:#888;text-align:left;padding:6px;border-bottom:1px solid #333}
+  td{padding:6px;border-bottom:1px solid #222;vertical-align:middle}
+  input,select{background:#222;color:#eee;border:1px solid #444;padding:4px;border-radius:4px;width:100%;box-sizing:border-box}
+  input[type=checkbox]{width:auto}
+  button{background:#4af;color:#000;border:none;padding:6px 14px;border-radius:5px;cursor:pointer;font-weight:bold;margin:2px}
+  button.danger{background:#f44}
+  #msg{color:#4f4;font-size:.9rem;margin-top:8px}
+  .days label{margin-right:6px;font-size:.8rem}
+</style>
+</head>
+<body>
+<h1>SB Player &ndash; Schedule</h1>
+<nav>
+  <a href="/">Dashboard</a>
+  <a href="/config.html">Config</a>
+  <a href="/outputs.html">Outputs</a>
+  <a href="/sequences.html">Sequences</a>
+  <a href="/playlists.html">Playlists</a>
+  <a href="/schedule.html">Schedule</a>
+  <a href="/ota.html">OTA</a>
+</nav>
+
+<div class="card">
+  <table>
+    <thead><tr><th>Days</th><th>Start</th><th>End</th><th>Playlist</th><th></th></tr></thead>
+    <tbody id="schedBody"></tbody>
+  </table>
+  <button onclick="addRow()" style="margin-top:12px">+ Add Entry</button>
+  <button onclick="save()" style="margin-top:12px">Save Schedule</button>
+  <div id="msg"></div>
+</div>
+
+<script>
+const DAY_NAMES = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+let playlists = [];
+fetch('/api/playlists').then(r=>r.json()).then(l=>{ playlists=l; load(); });
+
+function daysHtml(dayBits) {
+  return DAY_NAMES.map((d,i)=>`<label><input type="checkbox" data-day="${i}" ${(dayBits>>i)&1?'checked':''}>${d}</label>`).join('');
+}
+
+function rowHtml(e, idx) {
+  const opts = playlists.map(p=>`<option value="${p}" ${p===e.playlist?'selected':''}>${p}</option>`).join('');
+  return `<tr data-idx="${idx}">
+    <td class="days">${daysHtml(e.days||0x7F)}</td>
+    <td><input type="time" class="startTime" value="${pad(e.start_hour||18)}:${pad(e.start_min||0)}"></td>
+    <td><input type="time" class="endTime"   value="${pad(e.end_hour||23)}:${pad(e.end_min||0)}"></td>
+    <td><select class="playlist">${opts}</select></td>
+    <td><button class="danger" onclick="delRow(${idx})">Del</button></td>
+  </tr>`;
+}
+
+function pad(n){return String(n).padStart(2,'0');}
+
+let schedule = [];
+
+function load() {
+  fetch('/api/schedule').then(r=>r.json()).then(data => {
+    schedule = data.entries || [];
+    render();
+  });
+}
+
+function render() {
+  document.getElementById('schedBody').innerHTML = schedule.map((e,i)=>rowHtml(e,i)).join('');
+}
+
+function addRow() {
+  schedule.push({days:0x7F, start_hour:18, start_min:0, end_hour:23, end_min:0, playlist: playlists[0]||''});
+  render();
+}
+
+function delRow(idx) {
+  schedule.splice(idx,1);
+  render();
+}
+
+function collectRows() {
+  const rows = document.querySelectorAll('#schedBody tr');
+  return Array.from(rows).map(row => {
+    let days = 0;
+    row.querySelectorAll('input[data-day]').forEach(cb => { if(cb.checked) days |= (1<<Number(cb.dataset.day)); });
+    const [sh,sm] = row.querySelector('.startTime').value.split(':').map(Number);
+    const [eh,em] = row.querySelector('.endTime').value.split(':').map(Number);
+    return { days, start_hour:sh, start_min:sm, end_hour:eh, end_min:em, playlist: row.querySelector('.playlist').value };
+  });
+}
+
+function save() {
+  const entries = collectRows();
+  fetch('/api/schedule', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({entries})})
+    .then(r=>r.json()).then(res => { document.getElementById('msg').textContent = res.ok ? 'Saved!' : 'Error'; });
+}
+</script>
+</body>
+</html>

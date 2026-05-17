@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SB Player – OTA Update</title>
+<style>
+  body{font-family:sans-serif;margin:0;background:#111;color:#eee;padding:16px}
+  h1{margin:0 0 16px;font-size:1.4rem;color:#4af}
+  h2{font-size:1rem;color:#4af;margin:0 0 8px}
+  nav a{color:#4af;margin-right:16px;text-decoration:none;font-size:.9rem}
+  .card{background:#1e1e1e;border-radius:8px;padding:16px;margin-bottom:16px}
+  p.hint{color:#888;font-size:.85rem;margin:0 0 12px}
+  input[type=file]{background:#222;color:#eee;border:1px solid #444;padding:6px;border-radius:4px;width:100%;box-sizing:border-box;margin-bottom:10px}
+  button{background:#4af;color:#000;border:none;padding:8px 20px;border-radius:5px;cursor:pointer;font-weight:bold}
+  button:disabled{background:#555;color:#999;cursor:default}
+  .progress{background:#333;border-radius:4px;height:10px;margin:10px 0;display:none}
+  .bar{background:#4af;height:10px;border-radius:4px;width:0%;transition:width .2s}
+  .bar.done{background:#4a4}
+  .bar.err{background:#f44}
+  .msg{font-size:.9rem;margin-top:6px;min-height:1.2em}
+  .msg.ok{color:#4f4}
+  .msg.err{color:#f44}
+</style>
+</head>
+<body>
+<h1>SB Player &ndash; OTA Update</h1>
+<nav>
+  <a href="/">Dashboard</a>
+  <a href="/config.html">Config</a>
+  <a href="/outputs.html">Outputs</a>
+  <a href="/sequences.html">Sequences</a>
+  <a href="/playlists.html">Playlists</a>
+  <a href="/schedule.html">Schedule</a>
+  <a href="/ota.html">OTA</a>
+</nav>
+
+<div class="card">
+  <h2>Firmware Update</h2>
+  <p class="hint">Upload a firmware <code>.bin</code> file compiled for ESP32-P4. The device will reboot after a successful upload.</p>
+  <input type="file" id="fwFile" accept=".bin">
+  <button id="fwBtn" onclick="upload(false)">Upload Firmware</button>
+  <div class="progress" id="fwProg"><div class="bar" id="fwBar"></div></div>
+  <div class="msg" id="fwMsg"></div>
+</div>
+
+<div class="card">
+  <h2>Filesystem Update</h2>
+  <p class="hint">Upload a LittleFS image <code>.bin</code> file to update the web pages. The device will reboot after a successful upload.</p>
+  <input type="file" id="fsFile" accept=".bin">
+  <button id="fsBtn" onclick="upload(true)">Upload Filesystem</button>
+  <div class="progress" id="fsProg"><div class="bar" id="fsBar"></div></div>
+  <div class="msg" id="fsMsg"></div>
+</div>
+
+<script>
+function upload(isFs) {
+  const fileEl = document.getElementById(isFs ? 'fsFile' : 'fwFile');
+  const btn    = document.getElementById(isFs ? 'fsBtn'  : 'fwBtn');
+  const prog   = document.getElementById(isFs ? 'fsProg' : 'fwProg');
+  const bar    = document.getElementById(isFs ? 'fsBar'  : 'fwBar');
+  const msg    = document.getElementById(isFs ? 'fsMsg'  : 'fwMsg');
+
+  const file = fileEl.files[0];
+  if (!file) { setMsg(msg, 'Select a .bin file first.', true); return; }
+
+  const url = isFs ? '/update/fs' : '/update';
+  const form = new FormData();
+  form.append('file', file, file.name);
+
+  btn.disabled = true;
+  prog.style.display = 'block';
+  bar.style.width = '0%';
+  bar.className = 'bar';
+  setMsg(msg, 'Uploading…', false);
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', url);
+
+  xhr.upload.onprogress = e => {
+    if (e.lengthComputable) {
+      const pct = Math.round(e.loaded / e.total * 100);
+      bar.style.width = pct + '%';
+      setMsg(msg, pct + '%', false);
+    }
+  };
+
+  xhr.onload = () => {
+    if (xhr.status === 200 && xhr.responseText === 'OK') {
+      bar.style.width = '100%';
+      bar.className = 'bar done';
+      setMsg(msg, 'Done! Device is rebooting…', false);
+    } else {
+      bar.className = 'bar err';
+      setMsg(msg, 'Failed: ' + xhr.responseText, true);
+      btn.disabled = false;
+    }
+  };
+
+  xhr.onerror = () => {
+    bar.className = 'bar err';
+    setMsg(msg, 'Upload error — check connection.', true);
+    btn.disabled = false;
+  };
+
+  xhr.send(form);
+}
+
+function setMsg(el, text, isErr) {
+  el.textContent = text;
+  el.className = 'msg' + (isErr ? ' err' : isErr === false ? ' ok' : '');
+}
+</script>
+</body>
+</html>

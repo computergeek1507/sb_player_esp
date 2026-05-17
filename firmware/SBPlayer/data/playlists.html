@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SB Player – Playlists</title>
+<style>
+  body{font-family:sans-serif;margin:0;background:#111;color:#eee;padding:16px}
+  h1{margin:0 0 16px;font-size:1.4rem;color:#4af}
+  h2{font-size:1rem;color:#4af;margin:16px 0 8px}
+  nav a{color:#4af;margin-right:16px;text-decoration:none;font-size:.9rem}
+  .card{background:#1e1e1e;border-radius:8px;padding:16px;margin-bottom:16px}
+  label{display:block;font-size:.85rem;color:#888;margin-bottom:2px}
+  input,select,textarea{background:#222;color:#eee;border:1px solid #444;padding:6px;border-radius:4px;width:100%;box-sizing:border-box;margin-bottom:10px}
+  input[type=checkbox]{width:auto;margin-right:6px}
+  button{background:#4af;color:#000;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;font-weight:bold;margin:4px 4px 4px 0}
+  #msg{color:#4f4;font-size:.9rem;margin-top:8px}
+  ul{list-style:none;padding:0;margin:0}
+  li{padding:8px;border-bottom:1px solid #333}
+</style>
+</head>
+<body>
+<h1>SB Player &ndash; Playlists</h1>
+<nav>
+  <a href="/">Dashboard</a>
+  <a href="/config.html">Config</a>
+  <a href="/outputs.html">Outputs</a>
+  <a href="/sequences.html">Sequences</a>
+  <a href="/playlists.html">Playlists</a>
+  <a href="/schedule.html">Schedule</a>
+  <a href="/ota.html">OTA</a>
+</nav>
+
+<div class="card">
+  <h2>Existing Playlists</h2>
+  <ul id="list"><li>Loading...</li></ul>
+</div>
+
+<div class="card">
+  <h2>Edit / Create Playlist</h2>
+  <label>Name (e.g. holiday.json)</label>
+  <input id="plName" placeholder="holiday.json">
+  <label><input type="checkbox" id="plRepeat"> Repeat</label>
+  <label><input type="checkbox" id="plShuffle"> Shuffle</label>
+  <label>Sequences (one per line)</label>
+  <textarea id="plEntries" rows="8" placeholder="show1.fseq&#10;show2.fseq"></textarea>
+  <button onclick="loadPl()">Load</button>
+  <button onclick="savePl()">Save</button>
+  <div id="msg"></div>
+</div>
+
+<script>
+fetch('/api/playlists').then(r=>r.json()).then(list => {
+  document.getElementById('list').innerHTML = list.length
+    ? list.map(f=>`<li><a href="#" onclick="selPl('${f}');return false" style="color:#4af">${f}</a></li>`).join('')
+    : '<li style="color:#888">No playlists found</li>';
+});
+
+function selPl(name) {
+  document.getElementById('plName').value = name;
+  loadPl();
+}
+
+function loadPl() {
+  const name = document.getElementById('plName').value.trim();
+  if (!name) return;
+  fetch('/api/playlists?name=' + encodeURIComponent(name)).then(r=>r.json()).then(pl => {
+    document.getElementById('plRepeat').checked = pl.repeat || false;
+    document.getElementById('plShuffle').checked = pl.shuffle || false;
+    document.getElementById('plEntries').value = (pl.entries || []).join('\n');
+  }).catch(()=>{ document.getElementById('plEntries').value = ''; });
+}
+
+function savePl() {
+  const name = document.getElementById('plName').value.trim();
+  if (!name) { alert('Enter a playlist name'); return; }
+  const entries = document.getElementById('plEntries').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const pl = { repeat: document.getElementById('plRepeat').checked, shuffle: document.getElementById('plShuffle').checked, entries };
+  fetch('/api/playlists?name=' + encodeURIComponent(name), {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(pl)})
+    .then(r=>r.json()).then(res => { document.getElementById('msg').textContent = res.ok ? 'Saved!' : 'Error'; });
+}
+</script>
+</body>
+</html>
