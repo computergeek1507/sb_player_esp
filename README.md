@@ -123,6 +123,10 @@ All pins are configurable via the web UI.
 | `/ota.html` | OTA firmware update |
 | `/api/status` | JSON playback status (also pushed via WebSocket `/ws`) |
 
+## License
+
+[CC BY-NC 4.0](LICENSE) — free for personal and non-commercial use; commercial use is not permitted.
+
 ## First Boot
 
 1. Connect to the `SB-Player` WiFi AP (password `sbplayer`)
