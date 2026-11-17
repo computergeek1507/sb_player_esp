@@ -32,6 +32,10 @@ public:
     ScheduleEntry schedule[MAX_SCHEDULE_ENTRIES];
     int scheduleCount = 0;
 
+    // Playlist started at power-on without waiting for a valid clock, and played
+    // whenever no schedule window is active. Empty = disabled.
+    char bootPlaylist[64] = {0};
+
     bool loadSchedule() {
         File f = SD.open(SCHEDULE_FILE);
         if (!f) { Serial.println("[Sched] No schedule.json"); return false; }
@@ -39,6 +43,7 @@ public:
         DeserializationError err = deserializeJson(doc, f);
         f.close();
         if (err) { Serial.println("[Sched] Parse error"); return false; }
+        strlcpy(bootPlaylist, doc["boot_playlist"] | "", sizeof(bootPlaylist));
         scheduleCount = 0;
         for (JsonVariantConst e : doc["entries"].as<JsonArrayConst>()) {
             if (scheduleCount >= MAX_SCHEDULE_ENTRIES) break;
@@ -56,6 +61,7 @@ public:
 
     bool saveSchedule() {
         JsonDocument doc;
+        doc["boot_playlist"] = bootPlaylist;
         JsonArray arr = doc["entries"].to<JsonArray>();
         for (int i = 0; i < scheduleCount; i++) {
             JsonObject o = arr.add<JsonObject>();

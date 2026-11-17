@@ -252,6 +252,25 @@ void setup() {
     if (!SD.begin()) Serial.println("[SD] Mount failed — check card");
     else             Serial.printf("[SD] %.1f MB\n", SD.totalBytes() / 1048576.0);
 
+    // One-shot import of /outputs.json from the SD card (written by tools/sb_card_builder.py).
+    // The file is renamed afterwards so later web UI edits are not overwritten on the next boot.
+    if (SD.exists("/outputs.json")) {
+        File f = SD.open("/outputs.json");
+        JsonDocument doc;
+        bool parsed = f && !deserializeJson(doc, f);
+        if (f) f.close();
+        if (parsed) {
+            outputsFromJson(outputs, doc);
+            saveOutputs(outputs);
+            SD.remove("/outputs.imported.json");
+            SD.rename("/outputs.json", "/outputs.imported.json");
+            Serial.printf("[Config] Imported outputs from SD: %d E1.31, %d DDP\n",
+                          outputs.e131Count, outputs.ddpCount);
+        } else {
+            Serial.println("[Config] SD outputs.json could not be parsed - ignored");
+        }
+    }
+
     if (cfg.oledEnabled) oled.begin(cfg.oledSda, cfg.oledScl);
 
     if (cfg.rtcEnabled) {
@@ -305,30 +324,58 @@ static uint32_t lastSchedMs   = 0;
 static uint32_t lastWsMs      = 0;
 static uint32_t lastRtcSyncMs = 0;
 static bool     scheduledPlay = false;
+static bool     bootPlay      = false;   // playing scheduler.bootPlaylist (no clock needed)
+static bool     bootChecked   = false;
 static bool     rtcNtpSynced  = false;
+
+// Load the boot playlist and queue its first sequence. Returns false if there is none.
+static bool startBootPlaylist() {
+    if (!scheduler.bootPlaylist[0] || !scheduler.loadPlaylist(scheduler.bootPlaylist)) return false;
+    const char *next = scheduler.nextSequence();
+    if (!next) return false;
+    strlcpy(gPlayCmd.file, next, sizeof(gPlayCmd.file));
+    gPlayCmd.stop   = false;
+    gPlayCmdPending = true;
+    bootPlay        = true;
+    Serial.printf("[Sched] Boot playlist: %s\n", scheduler.bootPlaylist);
+    return true;
+}
 
 void loop() {
     if (gRebootPending) { delay(100); ESP.restart(); }
 
     uint32_t now = millis();
 
+    // Start the boot playlist once, unless the clock is already valid (RTC) and a
+    // schedule window is active - the schedule check below starts that one instead.
+    if (!bootChecked) {
+        bootChecked = true;
+        if (!scheduler.checkSchedule()) startBootPlaylist();
+    }
+
     uint8_t done;
     while (xQueueReceive(seqDoneQueue, &done, 0) == pdTRUE) {
-        if (scheduledPlay) {
+        if (scheduledPlay || bootPlay) {
             const char *next = scheduler.nextSequence();
             if (next) { strlcpy(gPlayCmd.file, next, sizeof(gPlayCmd.file)); gPlayCmd.stop=false; gPlayCmdPending=true; }
-            else       scheduledPlay = false;
+            else       scheduledPlay = bootPlay = false;
         }
     }
 
     if (now - lastSchedMs >= 10000) {
         lastSchedMs = now;
         bool inWindow = scheduler.checkSchedule();
-        if (inWindow && !gStatus.playing) {
+        if (inWindow && bootPlay) {
+            // checkSchedule() has loaded the scheduled playlist; it takes over when the
+            // current sequence ends.
+            bootPlay = false; scheduledPlay = true;
+        } else if (inWindow && !gStatus.playing) {
             const char *next = scheduler.nextSequence();
             if (next) { scheduledPlay=true; strlcpy(gPlayCmd.file,next,sizeof(gPlayCmd.file)); gPlayCmd.stop=false; gPlayCmdPending=true; }
         } else if (!inWindow && scheduledPlay) {
-            scheduledPlay=false; gPlayCmd.stop=true; gPlayCmdPending=true;
+            // Window ended: go back to the boot playlist if there is one, otherwise stop.
+            scheduledPlay = false;
+            if (!startBootPlaylist()) { gPlayCmd.stop=true; gPlayCmdPending=true; }
         }
     }
 

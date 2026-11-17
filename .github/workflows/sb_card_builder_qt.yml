@@ -1,0 +1,51 @@
+name: SB Card Builder (Qt)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/sb_card_builder_qt/**'
+      - '.github/workflows/sb_card_builder_qt.yml'
+  pull_request:
+    paths:
+      - 'tools/sb_card_builder_qt/**'
+      - '.github/workflows/sb_card_builder_qt.yml'
+  workflow_dispatch:
+
+env:
+  QT_VERSION: '6.8.3'
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: tools/sb_card_builder_qt
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          cache: true
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Package
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item build/Release/sb_card_builder.exe, build/Release/sb_card_cli.exe dist/
+          windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw `
+            --compiler-runtime dist/sb_card_builder.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sb_card_builder-qt-windows
+          path: tools/sb_card_builder_qt/dist/

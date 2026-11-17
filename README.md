@@ -37,6 +37,12 @@ firmware/SBPlayer/       Arduino sketch and headers
 hardware/                KiCad ( PCB project (ESP32-P4 + OLED, I2S audio and RTC carrier)
   ESP32-P4_OLED.*        Schematic, PCB, project files
   jlcpcb/                JLCPCB-ready gerbers, BOM, and CPL
+
+tools/                   SB Card Builder (prepares the SD card from xLights)
+  sb_card_builder.py     Python / Tkinter version (GUI + command line)
+  sb_card_builder_flutter/  Flutter version (Windows desktop and web)
+  sb_card_builder_qt/    C++ / Qt 6 version (GUI + command line)
+  icon/                  App icon and the script that generates it
 ```
 
 ## Hardware
@@ -92,6 +98,52 @@ Example `schedule.json`:
 Example `playlists/default.json`:
 ```json
 { "repeat": true, "shuffle": false, "entries": ["show1.fseq", "show2.fseq"] }
+```
+
+## SB Card Builder
+
+`tools/sb_card_builder.py` prepares the SD card from an xLights show folder (Python 3.9+, Tkinter):
+
+```
+python tools/sb_card_builder.py                                   # GUI
+python tools/sb_card_builder.py --show <show folder> --out <SD>   # command line
+```
+
+- **Outputs** — reads `xlights_networks.xml` and writes `outputs.json` (E1.31 and DDP controllers). The player imports this file from the card on the next boot and renames it to `outputs.imported.json`.
+- **Sequences** — converts xLights `.fseq` files (zstd / zlib compressed, sparse, v1 or v2) to the uncompressed FSEQ v2 the player reads, and copies the matching `.mp3` / `.wav` into `/sequences`.
+- **Playlists / Schedule** — builds `playlists/*.json` and `schedule.json`.
+- **SB Pixel 16 export** — writes sequences for an [SB Pixel 16](https://github.com/computergeek1507/sb_pixel_16) controller instead: pick it under *Export for* on the Sequences tab, or use `--pixel16 <controller name>` with `--show` and `--out`. Each file holds only that controller's channels, uncompressed, in `/sequences`; no audio, `outputs.json`, playlists or schedule are written, because that controller just loops the folder. For an E1.31 controller (or DDP without *Keep Channel Numbers*) the channels are renumbered from 1, matching the port start channels used for E1.31. For DDP with *Keep Channel Numbers* they keep their xLights numbers (stored as one sparse range). The controller buffers at most 262,144 channels per frame and plays the first 64 files.
+
+zstd-compressed sequences (the xLights default) need `python -m pip install zstandard` on Python older than 3.14.
+
+The same tool also exists in two other forms. All three write identical files.
+
+**Flutter (Windows desktop and web)** — `tools/sb_card_builder_flutter`, needs the Flutter SDK:
+
+```
+cd tools/sb_card_builder_flutter
+flutter run -d windows            # or: flutter build windows  -> build\windows\x64\runner\Release\
+flutter run -d chrome             # or: flutter build web      -> build\web\
+```
+
+The web build reads and writes folders through the File System Access API, so it needs Chrome or Edge on a computer, served from `localhost` or https. The Flutter app uses the same dark color scheme as the player's web UI.
+
+To host the web build on your own web server:
+
+```
+flutter build web --release --base-href /sbcard/   # path it will be served from; omit for the site root
+```
+
+Copy everything in `build\web\` to that path on the server. The server must use https, and should serve `.wasm` as `application/wasm`. Send `index.html`, `flutter_bootstrap.js` and `flutter_service_worker.js` with `Cache-Control: no-cache` so visitors get new versions after an upload.
+
+**C++ (Qt 6 Widgets)** — `tools/sb_card_builder_qt`, needs Qt 6, CMake 3.21+ and a C++17 compiler; zstd, nlohmann/json and pugixml are downloaded during configure:
+
+```
+cd tools/sb_card_builder_qt
+cmake -S . -B build -DCMAKE_PREFIX_PATH=<Qt kit, e.g. D:/Qt/6.8.3/msvc2022_64>
+cmake --build build --config Release
+build\Release\sb_card_builder.exe                               # GUI
+build\Release\sb_card_cli.exe --show <show folder> --out <SD>   # command line
 ```
 
 ## Default Pin Assignments

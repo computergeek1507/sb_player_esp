@@ -186,6 +186,7 @@ public:
         // ── Schedule GET ──────────────────────────────────────────────────────
         _server.on("/api/schedule", HTTP_GET, [this](AsyncWebServerRequest *req){
             JsonDocument doc;
+            doc["boot_playlist"] = _sched->bootPlaylist;
             JsonArray arr = doc["entries"].to<JsonArray>();
             for (int i = 0; i < _sched->scheduleCount; i++) {
                 auto &se = _sched->schedule[i];
@@ -209,6 +210,8 @@ public:
                 if (deserializeJson(doc, data, len)) {
                     req->send(400, "application/json", "{\"error\":\"parse\"}"); return;
                 }
+                if (doc["boot_playlist"].is<const char*>())   // takes effect on next boot
+                    strlcpy(_sched->bootPlaylist, doc["boot_playlist"], sizeof(_sched->bootPlaylist));
                 _sched->scheduleCount = 0;
                 for (JsonVariantConst e : doc["entries"].as<JsonArrayConst>()) {
                     if (_sched->scheduleCount >= MAX_SCHEDULE_ENTRIES) break;

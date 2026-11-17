@@ -37,6 +37,8 @@
     <thead><tr><th>Days</th><th>Start</th><th>End</th><th>Playlist</th><th></th></tr></thead>
     <tbody id="schedBody"></tbody>
   </table>
+  <p style="font-size:.9rem;margin:16px 0 4px">Play at boot (starts at power-on without waiting for the clock, and plays whenever no schedule entry is active; applies after a reboot)</p>
+  <select id="bootPlaylist" style="max-width:320px"></select><br>
   <button onclick="addRow()" style="margin-top:12px">+ Add Entry</button>
   <button onclick="save()" style="margin-top:12px">Save Schedule</button>
   <div id="msg"></div>
@@ -55,8 +57,8 @@ function rowHtml(e, idx) {
   const opts = playlists.map(p=>`<option value="${p}" ${p===e.playlist?'selected':''}>${p}</option>`).join('');
   return `<tr data-idx="${idx}">
     <td class="days">${daysHtml(e.days||0x7F)}</td>
-    <td><input type="time" class="startTime" value="${pad(e.start_hour||18)}:${pad(e.start_min||0)}"></td>
-    <td><input type="time" class="endTime"   value="${pad(e.end_hour||23)}:${pad(e.end_min||0)}"></td>
+    <td><input type="time" class="startTime" value="${pad(e.start_hour??18)}:${pad(e.start_min||0)}"></td>
+    <td><input type="time" class="endTime"   value="${pad(e.end_hour??23)}:${pad(e.end_min||0)}"></td>
     <td><select class="playlist">${opts}</select></td>
     <td><button class="danger" onclick="delRow(${idx})">Del</button></td>
   </tr>`;
@@ -69,6 +71,9 @@ let schedule = [];
 function load() {
   fetch('/api/schedule').then(r=>r.json()).then(data => {
     schedule = data.entries || [];
+    const boot = data.boot_playlist || '';
+    document.getElementById('bootPlaylist').innerHTML = '<option value="">(none)</option>' +
+      playlists.map(p=>`<option value="${p}" ${p===boot?'selected':''}>${p}</option>`).join('');
     render();
   });
 }
@@ -100,7 +105,7 @@ function collectRows() {
 
 function save() {
   const entries = collectRows();
-  fetch('/api/schedule', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({entries})})
+  fetch('/api/schedule', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({boot_playlist: document.getElementById('bootPlaylist').value, entries})})
     .then(r=>r.json()).then(res => { document.getElementById('msg').textContent = res.ok ? 'Saved!' : 'Error'; });
 }
 </script>

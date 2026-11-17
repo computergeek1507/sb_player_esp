@@ -1,0 +1,69 @@
+name: SB Card Builder (Flutter)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/sb_card_builder_flutter/**'
+      - '.github/workflows/sb_card_builder_flutter.yml'
+  pull_request:
+    paths:
+      - 'tools/sb_card_builder_flutter/**'
+      - '.github/workflows/sb_card_builder_flutter.yml'
+  workflow_dispatch:
+    inputs:
+      base_href:
+        description: 'Path the web build will be served from (start and end with /)'
+        default: '/'
+
+env:
+  FLUTTER_VERSION: '3.47.6'
+
+defaults:
+  run:
+    working-directory: tools/sb_card_builder_flutter
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+      - name: Build web
+        run: flutter build web --release --base-href "${{ inputs.base_href || '/' }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sb_card_builder-web
+          path: tools/sb_card_builder_flutter/build/web/
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Build Windows
+        run: flutter build windows --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sb_card_builder-windows
+          path: tools/sb_card_builder_flutter/build/windows/x64/runner/Release/
