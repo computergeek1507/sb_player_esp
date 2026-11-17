@@ -450,6 +450,44 @@ def days_text(mask):
     return "Every day" if mask & 0x7F == 0x7F else " ".join(d for i, d in enumerate(DAYS) if mask >> i & 1)
 
 
+# ── Player update ─────────────────────────────────────────────────────────────
+
+FIRMWARE_FILE = "firmware.bin"   # SD_FIRMWARE_FILE in firmware sdupdate.h
+LITTLEFS_FILE = "littlefs.bin"   # SD_LITTLEFS_FILE
+UPDATE_NAMES = {"firmware": FIRMWARE_FILE, "littlefs": LITTLEFS_FILE}
+ESP_IMAGE_MAGIC = 0xE9           # first byte of an ESP application image
+ESP32P4_CHIP_ID = 0x0012         # esp_image_header_t.chip_id, at byte 12
+
+
+def check_update_image(head, size, kind):
+    """Why the first 8 KB of a file (head) is not a player update of this kind, or None if it looks right."""
+    if kind == "firmware":
+        if len(head) < 24 or head[0] != ESP_IMAGE_MAGIC:
+            return "not an ESP32 application image - use SBPlayer.ino.bin, not the merged .bin or littlefs.bin"
+        chip = struct.unpack_from("<H", head, 12)[0]
+        if chip != ESP32P4_CHIP_ID:
+            return f"built for a different chip (chip id {chip}), not the ESP32-P4"
+        return None
+    if not head or head[0] == ESP_IMAGE_MAGIC or b"littlefs" not in head or size % 4096:
+        return "not a LittleFS image - use the littlefs.bin built from firmware/SBPlayer/data"
+    return None
+
+
+def copy_update(path, out_dir, kind):
+    """Copies a firmware or LittleFS image to the card root; the player installs it at its next boot."""
+    size = os.path.getsize(path)
+    with open(path, "rb") as f:
+        why = check_update_image(f.read(8192), size, kind)
+    if why:
+        raise ValueError(f"{os.path.basename(path)}: {why}")
+    name = UPDATE_NAMES[kind]
+    os.makedirs(out_dir, exist_ok=True)
+    tmp = os.path.join(out_dir, name + ".part")
+    shutil.copyfile(path, tmp)
+    os.replace(tmp, os.path.join(out_dir, name))
+    return f"Copied {os.path.basename(path)} to {name} ({size} bytes); the player installs it at its next boot"
+
+
 # ── GUI ───────────────────────────────────────────────────────────────────────
 
 def run_gui():
@@ -487,7 +525,8 @@ def run_gui():
             nb = ttk.Notebook(panes)
             panes.add(nb, weight=4)
             for title, build in (("Outputs", self.tab_outputs), ("Sequences", self.tab_sequences),
-                                 ("Playlists", self.tab_playlists), ("Schedule", self.tab_schedule)):
+                                 ("Playlists", self.tab_playlists), ("Schedule", self.tab_schedule),
+                                 ("Player update", self.tab_update)):
                 frame = ttk.Frame(nb, padding=8)
                 nb.add(frame, text=title)
                 build(frame)
@@ -893,6 +932,47 @@ def run_gui():
                 write_json(os.path.join(out, "schedule.json"), {"boot_playlist": boot, "entries": self.schedule})
                 self.log(f"Wrote schedule.json ({len(self.schedule)} entries, play at boot: {boot or 'none'})")
 
+        # -- player update
+        def tab_update(self, f):
+            self.upd_paths = {"firmware": tk.StringVar(), "littlefs": tk.StringVar()}
+            grid = ttk.Frame(f)
+            grid.pack(fill="x")
+            for row, (kind, label) in enumerate((("firmware", "Firmware (SBPlayer.ino.bin)"),
+                                                 ("littlefs", "Web pages (littlefs.bin)"))):
+                ttk.Label(grid, text=label).grid(row=row, column=0, sticky="w", pady=2)
+                ttk.Entry(grid, textvariable=self.upd_paths[kind], state="readonly").grid(
+                    row=row, column=1, sticky="ew", padx=6)
+                ttk.Button(grid, text="Browse...", command=lambda k=kind: self.pick_update(k)).grid(row=row, column=2)
+                ttk.Button(grid, text="Clear", command=lambda k=kind: self.upd_paths[k].set("")).grid(
+                    row=row, column=3, padx=(6, 0))
+            grid.columnconfigure(1, weight=1)
+            ttk.Label(f, wraplength=860, justify="left", text=(
+                "Copies the files to the root of the card as firmware.bin and littlefs.bin. The player installs "
+                "them at its next boot, renames them to *.installed.bin (or *.failed.bin), writes the result to "
+                "update.log on the card and restarts. Device settings are kept. Both files come from the "
+                "Firmware build on GitHub Actions; use SBPlayer.ino.bin, not the merged .bin.")).pack(
+                anchor="w", pady=10)
+            ttk.Button(f, text="Copy update to card", command=self.copy_updates).pack(anchor="e")
+
+        def pick_update(self, kind):
+            p = filedialog.askopenfilename(title="Player " + kind + " image",
+                                           filetypes=[("Firmware images", "*.bin"), ("All files", "*.*")])
+            if p:
+                self.upd_paths[kind].set(p)
+
+        def copy_updates(self):
+            out = self.need_out()
+            picked = [(k, v.get()) for k, v in self.upd_paths.items() if v.get()]
+            if not out or not picked:
+                if out:
+                    messagebox.showinfo(APP, "Choose a firmware and/or web pages image first.")
+                return
+            for kind, path in picked:
+                try:
+                    self.log(copy_update(path, out, kind))
+                except (OSError, ValueError) as e:
+                    self.log(f"FAILED - {e}")
+
     App().mainloop()
 
 
@@ -909,6 +989,10 @@ def main():
     ap.add_argument("--pixel16", metavar="CONTROLLER",
                     help="export for an SB Pixel 16: keep only this xLights controller's channels "
                          "(no outputs.json, no audio)")
+    ap.add_argument("--firmware", metavar="BIN",
+                    help="copy a player firmware image (SBPlayer.ino.bin) to the card; installed at next boot")
+    ap.add_argument("--littlefs", metavar="BIN",
+                    help="copy a player web pages image (littlefs.bin) to the card; installed at next boot")
     ap.add_argument("--info", metavar="FSEQ", help="print an FSEQ file's header and exit")
     a = ap.parse_args()
     if a.info:
@@ -916,10 +1000,18 @@ def main():
             print(read_fseq_info(f).describe())
         return 0
     if not a.out:
-        if a.show or a.fseq:
+        if a.show or a.fseq or a.firmware or a.littlefs:
             ap.error("--out is required")
         run_gui()
         return 0
+    update_failed = 0
+    for kind, path in (("littlefs", a.littlefs), ("firmware", a.firmware)):
+        if path:
+            try:
+                print(copy_update(path, a.out, kind))
+            except (OSError, ValueError) as e:
+                update_failed += 1
+                print(f"FAILED - {e}")
     layout, pixel16 = {}, None
     if a.pixel16:
         if not a.show:
@@ -951,7 +1043,7 @@ def main():
             print(f"{os.path.basename(src)}: FAILED - {e}")
     for note in pixel16_notes(pixel16, a.out) if pixel16 and len(files) > failed else []:
         print(note)
-    return 1 if failed else 0
+    return 1 if failed or update_failed else 0
 
 
 if __name__ == "__main__":

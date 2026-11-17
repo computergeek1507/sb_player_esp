@@ -29,6 +29,15 @@ Future<List<FsFile>> pickFseqFiles() async {
   return [for (final f in files) IoFile(f.path)];
 }
 
+Future<FsFile?> pickBinFile() async {
+  final f = await openFile(
+    acceptedTypeGroups: const [
+      XTypeGroup(label: 'Firmware images', extensions: ['bin']),
+    ],
+  );
+  return f == null ? null : IoFile(f.path);
+}
+
 /// A file named by an absolute path (FSEQ media headers hold these). Null if it does not exist.
 FsFile? fileAtPath(String path) {
   try {

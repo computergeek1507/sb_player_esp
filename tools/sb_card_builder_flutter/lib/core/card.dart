@@ -2,6 +2,9 @@
 /// the export rules for the SB Pixel 16 controller.
 library;
 
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'networks.dart';
 
 // SB Pixel 16 (https://github.com/computergeek1507/sb_pixel_16), limits from its fseq_player.h
@@ -97,3 +100,42 @@ int? parseTime(String text) {
 
 String safePlaylistName(String name) =>
     name.trim().replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+
+// ── Player update (firmware sdupdate.h) ──────────────────────────────────────
+
+enum UpdateKind {
+  firmware('firmware.bin', 'Firmware (SBPlayer.ino.bin)'),
+  littlefs('littlefs.bin', 'Web pages (littlefs.bin)');
+
+  const UpdateKind(this.cardName, this.label);
+
+  /// Name on the card root (SD_FIRMWARE_FILE / SD_LITTLEFS_FILE).
+  final String cardName;
+  final String label;
+}
+
+const espImageMagic = 0xE9; // first byte of an ESP application image
+const esp32p4ChipId = 0x0012; // esp_image_header_t.chip_id, at byte 12
+const updateHeadBytes = 8192;
+
+/// Why a file is not a player update of [kind], or null if it looks right.
+/// [head] is the first [updateHeadBytes] of the file, [size] its length.
+String? checkUpdateImage(Uint8List head, int size, UpdateKind kind) {
+  if (kind == UpdateKind.firmware) {
+    if (head.length < 24 || head[0] != espImageMagic) {
+      return 'not an ESP32 application image - use SBPlayer.ino.bin, '
+          'not the merged .bin or littlefs.bin';
+    }
+    final chip = head[12] | head[13] << 8;
+    return chip == esp32p4ChipId
+        ? null
+        : 'built for a different chip (chip id $chip), not the ESP32-P4';
+  }
+  if (head.isEmpty ||
+      head[0] == espImageMagic ||
+      size % 4096 != 0 ||
+      !latin1.decode(head).contains('littlefs')) {
+    return 'not a LittleFS image - use the littlefs.bin built from firmware/SBPlayer/data';
+  }
+  return null;
+}

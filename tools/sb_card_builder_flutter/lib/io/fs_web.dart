@@ -51,6 +51,25 @@ Future<List<FsFile>> pickFseqFiles() async {
   }
 }
 
+Future<FsFile?> pickBinFile() async {
+  final type = JSObject()
+    ..['description'] = 'Firmware images'.toJS
+    ..['accept'] = (JSObject()
+      ..['application/octet-stream'] = ['.bin'.toJS].toJS);
+  final opts = JSObject()..['types'] = [type].toJS;
+  try {
+    final handles = await (web.window as JSObject)
+        .callMethod<JSPromise<JSArray<web.FileSystemFileHandle>>>(
+          'showOpenFilePicker'.toJS,
+          opts,
+        )
+        .toDart;
+    return WebFile(handles.toDart.first, null);
+  } catch (_) {
+    return null;
+  }
+}
+
 /// Browsers cannot open a file by path.
 FsFile? fileAtPath(String path) => null;
 

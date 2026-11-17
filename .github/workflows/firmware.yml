@@ -1,0 +1,77 @@
+name: Firmware
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'firmware/**'
+      - '.github/workflows/firmware.yml'
+  pull_request:
+    paths:
+      - 'firmware/**'
+      - '.github/workflows/firmware.yml'
+  workflow_dispatch:
+
+env:
+  ESP32_CORE_VERSION: '3.2.0'
+  FQBN: esp32:esp32:esp32p4
+  SKETCH: firmware/SBPlayer
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Cache Arduino core and libraries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.arduino15
+            ~/Arduino/libraries
+          key: arduino-esp32-${{ env.ESP32_CORE_VERSION }}-${{ hashFiles('.github/workflows/firmware.yml') }}
+
+      - name: Install ESP32 core
+        run: |
+          arduino-cli config init --overwrite
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@${ESP32_CORE_VERSION}
+
+      - name: Install libraries
+        run: |
+          arduino-cli lib install \
+            "ArduinoJson" \
+            "ESP Async WebServer" \
+            "Async TCP" \
+            "ESP8266Audio" \
+            "Adafruit GFX Library" \
+            "Adafruit SSD1306" \
+            "RTClib"
+
+      - name: Compile
+        run: |
+          arduino-cli compile --fqbn "$FQBN" --warnings default \
+            --output-dir build "$SKETCH"
+
+      - name: Build LittleFS image (web UI)
+        run: |
+          # Partition table used by the build (default scheme unless the sketch has its own)
+          CSV=$(find ~/.arduino15/packages/esp32/hardware/esp32 -path '*tools/partitions/default.csv' | head -1)
+          [ -f "$SKETCH/partitions.csv" ] && CSV="$SKETCH/partitions.csv"
+          # columns: name,type,subtype,offset,size -> the data partition LittleFS mounts
+          read OFFSET SIZE < <(awk -F, '!/^#/ { for (i=1;i<=NF;i++) gsub(/[ \t]/,"",$i) } $3=="spiffs" || $3=="littlefs" { print $4, $5; exit }' "$CSV")
+          MKLFS=$(find ~/.arduino15/packages/esp32/tools -type f -name mklittlefs | head -1)
+          echo "Partition table: $CSV  offset=$OFFSET size=$SIZE"
+          "$MKLFS" -c "$SKETCH/data" -p 256 -b 4096 -s $((SIZE)) build/littlefs.bin
+          echo "Flash littlefs.bin at $OFFSET" > build/littlefs.txt
+          cat build/littlefs.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SBPlayer-firmware
+          path: |
+            build/*.bin
+            build/littlefs.txt

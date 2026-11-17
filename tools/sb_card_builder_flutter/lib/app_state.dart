@@ -17,6 +17,9 @@ class AppState extends ChangeNotifier {
   List<Map<String, dynamic>> schedule = [];
   String bootPlaylist = '';
   final List<String> log = [];
+
+  /// Player update images picked on the Player update tab.
+  final Map<UpdateKind, FsFile> updates = {};
   bool trim = true, copyAudio = true;
 
   /// Export target: -1 for the SB Player, or the index of the controller to export
@@ -405,6 +408,51 @@ class AppState extends ChangeNotifier {
       'Wrote schedule.json (${schedule.length} entries, play at boot: '
       '${bootPlaylist.isEmpty ? 'none' : bootPlaylist})',
     );
+    return null;
+  }
+
+  // ── player update ──────────────────────────────────────────────────────────
+
+  void setUpdate(UpdateKind kind, FsFile? file) {
+    file == null ? updates.remove(kind) : updates[kind] = file;
+    notifyListeners();
+  }
+
+  /// Copies the picked images to the card root, where the player installs them at its
+  /// next boot. Returns a message for the user when nothing was written.
+  Future<String?> copyUpdates() async {
+    final dir = card;
+    if (dir == null) return 'Choose the SD card folder first.';
+    if (updates.isEmpty) {
+      return 'Choose a firmware and/or web pages image first.';
+    }
+    busy = true;
+    notifyListeners();
+    try {
+      // web pages first, matching the order the player installs them in
+      for (final kind in UpdateKind.values.reversed) {
+        final src = updates[kind];
+        if (src == null) continue;
+        final size = await src.length();
+        final why = checkUpdateImage(
+          await src.read(0, size < updateHeadBytes ? size : updateHeadBytes),
+          size,
+          kind,
+        );
+        if (why != null) {
+          say('FAILED - ${src.name}: $why');
+          continue;
+        }
+        await copyFile(src, dir, kind.cardName);
+        say(
+          'Copied ${src.name} to ${kind.cardName} ($size bytes); '
+          'the player installs it at its next boot',
+        );
+      }
+    } finally {
+      busy = false;
+      notifyListeners();
+    }
     return null;
   }
 }

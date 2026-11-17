@@ -203,6 +203,37 @@ void main() {
     expect(parseTime('24:00'), isNull);
   });
 
+  test('player update: firmware and LittleFS image checks', () {
+    Uint8List app(int chip) => Uint8List(64)
+      ..[0] = espImageMagic
+      ..[12] = chip & 0xFF
+      ..[13] = chip >> 8;
+    final lfs = Uint8List(4096)..setAll(8, latin1.encode('littlefs'));
+    final merged = Uint8List(8192)..fillRange(0, 8192, 0xFF);
+
+    expect(
+      checkUpdateImage(app(esp32p4ChipId), 1 << 20, UpdateKind.firmware),
+      isNull,
+    );
+    expect(
+      checkUpdateImage(app(9), 1 << 20, UpdateKind.firmware),
+      contains('chip id 9'),
+    );
+    expect(
+      checkUpdateImage(merged, 1 << 22, UpdateKind.firmware),
+      contains('merged'),
+    );
+    expect(checkUpdateImage(lfs, 4096, UpdateKind.firmware), isNotNull);
+
+    expect(checkUpdateImage(lfs, 0x160000, UpdateKind.littlefs), isNull);
+    expect(checkUpdateImage(lfs, 4097, UpdateKind.littlefs), isNotNull);
+    expect(
+      checkUpdateImage(app(esp32p4ChipId), 4096, UpdateKind.littlefs),
+      isNotNull,
+    );
+    expect(checkUpdateImage(merged, 8192, UpdateKind.littlefs), isNotNull);
+  });
+
   final shows = Platform.environment['SB_SHOWS'],
       reference = Platform.environment['SB_REFERENCE'];
   final haveReal = shows != null && reference != null;

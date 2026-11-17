@@ -28,6 +28,8 @@ int main(int argc, char** argv) {
         {"no-audio", "do not copy audio files"},
         {"pixel16", "export for an SB Pixel 16: keep only this xLights controller's channels "
                     "(no outputs.json, no audio)", "controller"},
+        {"firmware", "copy a player firmware image (SBPlayer.ino.bin) to the card; installed at next boot", "bin"},
+        {"littlefs", "copy a player web pages image (littlefs.bin) to the card; installed at next boot", "bin"},
         {"info", "print an FSEQ file's header and exit", "file"},
     });
     p.process(app);
@@ -41,6 +43,17 @@ int main(int argc, char** argv) {
         }
         if (!p.isSet("out")) p.showHelp(2);
         const QString show = p.value("show"), outDir = p.value("out");
+        int updateFailed = 0;
+        for (const auto& [option, kind] : {std::pair{"littlefs", UpdateKind::LittleFs},
+                                           std::pair{"firmware", UpdateKind::Firmware}}) {
+            if (!p.isSet(QLatin1String(option))) continue;
+            try {
+                out << copyUpdate(p.value(QLatin1String(option)), outDir, kind) << Qt::endl;
+            } catch (const std::exception& e) {
+                updateFailed++;
+                out << "FAILED - " << e.what() << Qt::endl;
+            }
+        }
         Layout layout;
         Controller pixel16;
         const bool forPixel16 = p.isSet("pixel16");
@@ -84,7 +97,7 @@ int main(int argc, char** argv) {
         }
         if (forPixel16 && files.size() > failed)
             for (const QString& note : pixel16Notes(pixel16, outDir)) out << note << Qt::endl;
-        return failed ? 1 : 0;
+        return failed || updateFailed ? 1 : 0;
     } catch (const std::exception& e) {
         out << "ERROR " << e.what() << Qt::endl;
         return 1;

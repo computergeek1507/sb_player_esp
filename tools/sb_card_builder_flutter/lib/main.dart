@@ -88,7 +88,7 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Scaffold(
         appBar: AppBar(
           title: const Text(appName),
@@ -98,6 +98,7 @@ class HomePage extends StatelessWidget {
               Tab(text: 'Sequences'),
               Tab(text: 'Playlists'),
               Tab(text: 'Schedule'),
+              Tab(text: 'Player update'),
             ],
           ),
         ),
@@ -123,6 +124,7 @@ class HomePage extends StatelessWidget {
                     SequencesTab(state: state),
                     PlaylistsTab(state: state),
                     ScheduleTab(state: state),
+                    UpdateTab(state: state),
                   ],
                 ),
               ),
@@ -841,6 +843,82 @@ class _ScheduleTabState extends State<ScheduleTab>
                 child: const Text('Write schedule.json to card'),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Player update ────────────────────────────────────────────────────────────
+
+class UpdateTab extends StatelessWidget {
+  const UpdateTab({super.key, required this.state});
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final kind in UpdateKind.values)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  SizedBox(width: 220, child: Text(kind.label)),
+                  Expanded(
+                    child: Text(
+                      state.updates[kind]?.name ?? 'not chosen',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: state.updates[kind] == null
+                            ? scheme.outline
+                            : null,
+                      ),
+                    ),
+                  ),
+                  if (state.updates[kind] != null)
+                    IconButton(
+                      tooltip: 'Clear',
+                      icon: const Icon(Icons.close),
+                      onPressed: state.busy
+                          ? null
+                          : () => state.setUpdate(kind, null),
+                    ),
+                  OutlinedButton(
+                    onPressed: state.busy
+                        ? null
+                        : () async {
+                            final f = await pickBinFile();
+                            if (f != null) state.setUpdate(kind, f);
+                          },
+                    child: const Text('Browse...'),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 12),
+          Text(
+            'Copies the files to the root of the card as firmware.bin and littlefs.bin. '
+            'The player installs them at its next boot, renames them to *.installed.bin '
+            '(or *.failed.bin), writes the result to update.log on the card and restarts. '
+            'Device settings are kept. Both files come from the Firmware build on GitHub '
+            'Actions; use SBPlayer.ino.bin, not the merged .bin.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton(
+              onPressed: state.busy
+                  ? null
+                  : () => run(context, state, state.copyUpdates),
+              child: const Text('Copy update to card'),
+            ),
           ),
         ],
       ),

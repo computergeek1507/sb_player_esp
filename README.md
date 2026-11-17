@@ -30,6 +30,7 @@ firmware/SBPlayer/       Arduino sketch and headers
   scheduler.h            Time-based scheduler + playlist engine
   oled.h                 SSD1306 OLED driver
   rtc.h                  RTC abstraction (DS3231/DS1307/PCF8523)
+  sdupdate.h             Firmware / web pages update from the SD card at boot
   webui.h                Async HTTP + WebSocket API and web UI
   data/                  LittleFS web pages (config, outputs, sequences,
                           playlists, schedule, OTA)
@@ -65,11 +66,14 @@ Production files for JLCPCB are in `hardware/jlcpcb/`.
 **Board**: `esp32:esp32:esp32p4` (Arduino ESP32 core 3.x)
 
 **Required libraries** (install via Arduino Library Manager or clone into `~/Arduino/libraries`):
-- ESPAsyncWebServer
+- ESP Async WebServer (ESP32Async) and Async TCP
 - ArduinoJson
-- ESP32-audioI2S (or equivalent — provides `AudioFileSourceSD`, `AudioGeneratorWAV/MP3`, `AudioOutputI2S`)
+- ESP8266Audio (provides `AudioFileSourceSD`, `AudioGeneratorWAV/MP3`, `AudioOutputI2S`; supports ESP32)
 - Adafruit GFX Library
 - Adafruit SSD1306
+- RTClib
+
+The GitHub Actions workflow `.github/workflows/firmware.yml` builds the firmware with arduino-cli (ESP32 core 3.2.0, default partition scheme) and a `littlefs.bin` of the web pages; both are attached to each run as the `SBPlayer-firmware` download.
 
 **Build and flash**:
 1. Open `firmware/SBPlayer/SBPlayer.ino` in Arduino IDE
@@ -83,7 +87,12 @@ Production files for JLCPCB are in `hardware/jlcpcb/`.
 /sequences/      FSEQ v2 sequence files + matching audio (*.wav / *.mp3)
 /playlists/      JSON playlist files
 schedule.json    Active schedule (created/managed via web UI)
+firmware.bin     Optional firmware update (SBPlayer.ino.bin), installed at boot
+littlefs.bin     Optional web pages update (LittleFS image), installed at boot
+update.log       Result of each update the player installed from the card
 ```
+
+**Updating from the SD card** — at boot the player flashes `/littlefs.bin` and then `/firmware.bin` if they are on the card, renames each to `*.installed.bin` (or `*.failed.bin`, so a bad file is only tried once), appends the result to `/update.log` and restarts. `config.json` and `outputs.json` are kept across a web pages update. Use `SBPlayer.ino.bin`, not `SBPlayer.ino.merged.bin` (the merged image is for a full USB flash). The SB Card Builder's *Player update* tab, or `--firmware` / `--littlefs` on the command line, checks the files and copies them to the card. Updates can also be uploaded over the network from `/ota.html`.
 
 Example `schedule.json`:
 ```json
@@ -112,6 +121,7 @@ python tools/sb_card_builder.py --show <show folder> --out <SD>   # command line
 - **Outputs** — reads `xlights_networks.xml` and writes `outputs.json` (E1.31 and DDP controllers). The player imports this file from the card on the next boot and renames it to `outputs.imported.json`.
 - **Sequences** — converts xLights `.fseq` files (zstd / zlib compressed, sparse, v1 or v2) to the uncompressed FSEQ v2 the player reads, and copies the matching `.mp3` / `.wav` into `/sequences`.
 - **Playlists / Schedule** — builds `playlists/*.json` and `schedule.json`.
+- **Player update** — copies a firmware image (`SBPlayer.ino.bin`) and/or web pages image (`littlefs.bin`) to the card root, after checking that each is the right kind of image for the ESP32-P4; the player installs them at its next boot. Command line: `--firmware <bin>` and `--littlefs <bin>` with `--out`.
 - **SB Pixel 16 export** — writes sequences for an [SB Pixel 16](https://github.com/computergeek1507/sb_pixel_16) controller instead: pick it under *Export for* on the Sequences tab, or use `--pixel16 <controller name>` with `--show` and `--out`. Each file holds only that controller's channels, uncompressed, in `/sequences`; no audio, `outputs.json`, playlists or schedule are written, because that controller just loops the folder. For an E1.31 controller (or DDP without *Keep Channel Numbers*) the channels are renumbered from 1, matching the port start channels used for E1.31. For DDP with *Keep Channel Numbers* they keep their xLights numbers (stored as one sparse range). The controller buffers at most 262,144 channels per frame and plays the first 64 files.
 
 zstd-compressed sequences (the xLights default) need `python -m pip install zstandard` on Python older than 3.14.

@@ -45,3 +45,16 @@ QMap<QString, Json> loadPlaylists(const QString& outDir);
 Json scheduleEntries(int days, int start, int end, const QString& playlist);
 QString daysText(int mask);
 QString safePlaylistName(const QString& name);
+
+// Player update images. The firmware installs them from the card root at its next boot
+// (firmware sdupdate.h), so they are copied there under fixed names.
+enum class UpdateKind { Firmware, LittleFs };
+constexpr unsigned char kEspImageMagic = 0xE9;  // first byte of an ESP application image
+constexpr int kEsp32P4ChipId = 0x0012;          // esp_image_header_t.chip_id, at byte 12
+constexpr int kUpdateHeadBytes = 8192;
+QString updateCardName(UpdateKind kind);  // firmware.bin / littlefs.bin
+// Why a file is not a player update of this kind, or empty if it looks right.
+// head is the first kUpdateHeadBytes of the file, size its length.
+QString checkUpdateImage(const QByteArray& head, qint64 size, UpdateKind kind);
+// Checks src and copies it to the card root. Returns the line to log; throws std::runtime_error.
+QString copyUpdate(const QString& src, const QString& outDir, UpdateKind kind);

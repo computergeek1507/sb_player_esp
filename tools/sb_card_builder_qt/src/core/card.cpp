@@ -146,3 +146,48 @@ QString safePlaylistName(const QString& name) {
     static const QRegularExpression bad(QStringLiteral("[\\\\/:*?\"<>|]"));
     return name.trimmed().replace(bad, QStringLiteral("_"));
 }
+
+// ── Player update ────────────────────────────────────────────────────────────
+
+QString updateCardName(UpdateKind kind) {
+    return kind == UpdateKind::Firmware ? QStringLiteral("firmware.bin") : QStringLiteral("littlefs.bin");
+}
+
+QString checkUpdateImage(const QByteArray& head, qint64 size, UpdateKind kind) {
+    const auto byte = [&](int i) { return int(static_cast<unsigned char>(head[i])); };
+    if (kind == UpdateKind::Firmware) {
+        if (head.size() < 24 || byte(0) != kEspImageMagic)
+            return QStringLiteral("not an ESP32 application image - use SBPlayer.ino.bin, "
+                                  "not the merged .bin or littlefs.bin");
+        const int chip = byte(12) | byte(13) << 8;
+        return chip == kEsp32P4ChipId
+                   ? QString()
+                   : QStringLiteral("built for a different chip (chip id %1), not the ESP32-P4").arg(chip);
+    }
+    if (head.isEmpty() || byte(0) == kEspImageMagic || size % 4096 || !head.contains("littlefs"))
+        return QStringLiteral("not a LittleFS image - use the littlefs.bin built from firmware/SBPlayer/data");
+    return {};
+}
+
+QString copyUpdate(const QString& src, const QString& outDir, UpdateKind kind) {
+    const QString name = QFileInfo(src).fileName();
+    QFile in(src);
+    if (!in.open(QIODevice::ReadOnly))
+        throw std::runtime_error(QStringLiteral("cannot open %1").arg(src).toStdString());
+    const qint64 size = in.size();
+    const QString why = checkUpdateImage(in.peek(kUpdateHeadBytes), size, kind);
+    if (!why.isEmpty()) throw std::runtime_error(QStringLiteral("%1: %2").arg(name, why).toStdString());
+    QDir().mkpath(outDir);
+    QSaveFile out(QDir(outDir).filePath(updateCardName(kind)));
+    bool ok = out.open(QIODevice::WriteOnly);
+    while (ok && !in.atEnd()) {
+        const QByteArray chunk = in.read(4 << 20);
+        ok = !chunk.isEmpty() && out.write(chunk) == chunk.size();
+    }
+    if (!ok || !out.commit())
+        throw std::runtime_error(
+            QStringLiteral("cannot write %1: %2").arg(out.fileName(), out.errorString()).toStdString());
+    return QStringLiteral("Copied %1 to %2 (%3 bytes); the player installs it at its next boot")
+        .arg(name, updateCardName(kind))
+        .arg(size);
+}

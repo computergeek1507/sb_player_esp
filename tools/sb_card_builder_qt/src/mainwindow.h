@@ -34,6 +34,7 @@ public:
     bool savePlaylist();
     bool addScheduleEntry();
     bool saveSchedule();
+    bool copyUpdates();  // copies the picked player update images to the card root
 
     // When set, messages are collected in notices instead of shown in a dialog (used by the self test).
     bool quiet = false;
@@ -47,6 +48,7 @@ private:
     QWidget* buildSequencesTab();
     QWidget* buildPlaylistsTab();
     QWidget* buildScheduleTab();
+    QWidget* buildUpdateTab();
 
     void log(const QString& line);
     void notify(const QString& message);
@@ -76,5 +78,6 @@ private:
     QProgressBar* m_progress = nullptr;
     QPushButton *m_convert = nullptr, *m_cancelButton = nullptr;
     QTimeEdit *m_start = nullptr, *m_end = nullptr;
+    QLineEdit *m_firmware = nullptr, *m_littlefs = nullptr;
     QComboBox *m_schedulePlaylist = nullptr, *m_bootPlaylist = nullptr, *m_target = nullptr;
 };

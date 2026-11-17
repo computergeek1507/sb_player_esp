@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sb_card_builder/app_state.dart';
+import 'package:sb_card_builder/core/card.dart';
 import 'package:sb_card_builder/io/fs_io.dart';
 import 'package:sb_card_builder/main.dart';
 
@@ -167,6 +168,42 @@ void main() {
     skip: p16 != null ? false : 'set SB_PIXEL16 to run',
     timeout: const Timeout(Duration(minutes: 5)),
   );
+
+  test('player update: copies checked images to the card root', () async {
+    final tmp = await Directory.systemTemp.createTemp('sb_update');
+    try {
+      final app = File('${tmp.path}/SBPlayer.ino.bin')
+        ..writeAsBytesSync(
+          Uint8List(64)
+            ..[0] = espImageMagic
+            ..[12] = esp32p4ChipId,
+        );
+      final lfs = File('${tmp.path}/fs.bin')
+        ..writeAsBytesSync(
+          Uint8List(8192)..setAll(8, latin1.encode('littlefs')),
+        );
+      final card = await Directory('${tmp.path}/card').create();
+      final s = AppState()..card = IoDir(card.path);
+
+      s.setUpdate(UpdateKind.firmware, IoFile(lfs.path)); // wrong kind
+      expect(await s.copyUpdates(), isNull);
+      expect(s.log.last, contains('FAILED'));
+      expect(card.listSync(), isEmpty);
+
+      s
+        ..setUpdate(UpdateKind.firmware, IoFile(app.path))
+        ..setUpdate(UpdateKind.littlefs, IoFile(lfs.path));
+      await s.copyUpdates();
+      expect(s.log.where((l) => l.contains('FAILED')).length, 1);
+      expect(
+        File('${card.path}/firmware.bin').readAsBytesSync(),
+        app.readAsBytesSync(),
+      );
+      expect(File('${card.path}/littlefs.bin').lengthSync(), 8192);
+    } finally {
+      await tmp.delete(recursive: true);
+    }
+  });
 
   group('UI', () {
     late Directory card;

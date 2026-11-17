@@ -15,6 +15,7 @@
 #include "oled.h"
 #include "rtc.h"
 #include "scheduler.h"
+#include "sdupdate.h"
 #include "webui.h"
 
 // ── Globals shared with webui.h ───────────────────────────────────────────────
@@ -251,6 +252,10 @@ void setup() {
 
     if (!SD.begin()) Serial.println("[SD] Mount failed — check card");
     else             Serial.printf("[SD] %.1f MB\n", SD.totalBytes() / 1048576.0);
+
+    // /littlefs.bin and /firmware.bin on the card (written by the card builder) are
+    // flashed here; the device restarts if either was installed.
+    applySdUpdates();
 
     // One-shot import of /outputs.json from the SD card (written by tools/sb_card_builder.py).
     // The file is renamed afterwards so later web UI edits are not overwritten on the next boot.

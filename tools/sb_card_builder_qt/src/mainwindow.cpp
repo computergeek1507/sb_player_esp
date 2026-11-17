@@ -52,6 +52,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     m_tabs->addTab(buildSequencesTab(), QStringLiteral("Sequences"));
     m_tabs->addTab(buildPlaylistsTab(), QStringLiteral("Playlists"));
     m_tabs->addTab(buildScheduleTab(), QStringLiteral("Schedule"));
+    m_tabs->addTab(buildUpdateTab(), QStringLiteral("Player update"));
     m_log = new QPlainTextEdit;
     m_log->setReadOnly(true);
     auto* split = new QSplitter(Qt::Vertical);
@@ -593,4 +594,70 @@ bool MainWindow::saveSchedule() {
     log(QStringLiteral("Wrote schedule.json (%1 entries, play at boot: %2)")
             .arg(m_schedule.size()).arg(boot.isEmpty() ? QStringLiteral("none") : boot));
     return true;
+}
+
+// ── Player update ────────────────────────────────────────────────────────────
+
+QWidget* MainWindow::buildUpdateTab() {
+    auto* page = new QWidget;
+    auto* v = new QVBoxLayout(page);
+    auto* grid = new QGridLayout;
+    auto addImage = [&](int row, const QString& label, QLineEdit*& edit, const QString& name) {
+        edit = new QLineEdit;
+        edit->setObjectName(name);
+        edit->setReadOnly(true);
+        edit->setPlaceholderText(QStringLiteral("not chosen"));
+        auto* browse = new QPushButton(QStringLiteral("Browse..."));
+        auto* clear = new QPushButton(QStringLiteral("Clear"));
+        grid->addWidget(new QLabel(label), row, 0);
+        grid->addWidget(edit, row, 1);
+        grid->addWidget(browse, row, 2);
+        grid->addWidget(clear, row, 3);
+        QLineEdit* target = edit;
+        connect(browse, &QPushButton::clicked, this, [this, target, label] {
+            const QString f = QFileDialog::getOpenFileName(this, label, QString(),
+                                                           QStringLiteral("Firmware images (*.bin);;All files (*)"));
+            if (!f.isEmpty()) target->setText(QDir::toNativeSeparators(f));
+        });
+        connect(clear, &QPushButton::clicked, target, &QLineEdit::clear);
+    };
+    addImage(0, QStringLiteral("Firmware (SBPlayer.ino.bin)"), m_firmware, QStringLiteral("firmware"));
+    addImage(1, QStringLiteral("Web pages (littlefs.bin)"), m_littlefs, QStringLiteral("littlefs"));
+    grid->setColumnStretch(1, 1);
+    v->addLayout(grid);
+    auto* note = new QLabel(QStringLiteral(
+        "Copies the files to the root of the card as firmware.bin and littlefs.bin. The player installs them at "
+        "its next boot, renames them to *.installed.bin (or *.failed.bin), writes the result to update.log on the "
+        "card and restarts. Device settings are kept. Both files come from the Firmware build on GitHub Actions; "
+        "use SBPlayer.ino.bin, not the merged .bin."));
+    note->setWordWrap(true);
+    v->addWidget(note);
+    auto* bar = new QHBoxLayout;
+    auto* copy = new QPushButton(QStringLiteral("Copy update to card"));
+    bar->addStretch(1);
+    bar->addWidget(copy);
+    v->addLayout(bar);
+    v->addStretch(1);
+    connect(copy, &QPushButton::clicked, this, &MainWindow::copyUpdates);
+    return page;
+}
+
+bool MainWindow::copyUpdates() {
+    if (!needCard()) return false;
+    // web pages first, matching the order the player installs them in
+    const QList<QPair<UpdateKind, QString>> picked = {{UpdateKind::LittleFs, m_littlefs->text()},
+                                                      {UpdateKind::Firmware, m_firmware->text()}};
+    bool any = false, ok = true;
+    for (const auto& [kind, path] : picked) {
+        if (path.isEmpty()) continue;
+        any = true;
+        try {
+            log(copyUpdate(QDir::fromNativeSeparators(path), m_card, kind));
+        } catch (const std::exception& e) {
+            ok = false;
+            log(QStringLiteral("FAILED - ") + QString::fromUtf8(e.what()));
+        }
+    }
+    if (!any) notify(QStringLiteral("Choose a firmware and/or web pages image first."));
+    return any && ok;
 }
