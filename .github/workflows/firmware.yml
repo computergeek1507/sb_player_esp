@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 env:
-  ESP32_CORE_VERSION: '3.2.0'
+  ESP32_CORE_VERSION: '3.3.8'   # ESP-IDF 5.5; ESP8266Audio 2.3.0+ needs it (I2S PDM data_fmt)
   FQBN: esp32:esp32:esp32p4
   SKETCH: firmware/SBPlayer
 
@@ -75,3 +75,38 @@ jobs:
           path: |
             build/*.bin
             build/littlefs.txt
+
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release-firmware-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: firmware-latest
+      TITLE: Firmware (latest build)
+      NOTES: |-
+        Rolling build of the SB Player firmware from main, updated automatically on every push.
+        - SBPlayer.ino.bin: firmware update. Copy to the SD card as firmware.bin (the SB Card Builder's Player update tab does this), or upload it on the player's OTA page
+        - littlefs.bin: web pages update. Copy to the SD card as littlefs.bin, or upload it on the OTA page; littlefs.txt has its flash offset
+        - SBPlayer.ino.merged.bin: full image for a first flash over USB at offset 0
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SBPlayer-firmware
+          path: dist
+
+      - name: Update rolling release
+        run: |
+          printf '%s\n\nBuilt from %s on %s.\n' "$NOTES" "$GITHUB_SHA" "$(date -u '+%Y-%m-%d %H:%M UTC')" > notes.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh api -X PATCH "repos/$GH_REPO/git/refs/tags/$TAG" -f sha="$GITHUB_SHA" -F force=true
+            gh release edit "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --title "$TITLE" --notes-file notes.md
+          fi
+          gh release upload "$TAG" dist/* --clobber

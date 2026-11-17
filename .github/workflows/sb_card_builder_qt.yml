@@ -49,3 +49,42 @@ jobs:
         with:
           name: sb_card_builder-qt-windows
           path: tools/sb_card_builder_qt/dist/
+
+  release:
+    needs: windows
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release-builder-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: builder-latest
+      TITLE: SB Card Builder (latest build)
+      NOTES: |-
+        Rolling build of the SB Card Builder from main, updated automatically on every push.
+        - sb_card_builder-flutter-windows.zip: Flutter desktop app for Windows (unzip, run sb_card_builder.exe)
+        - sb_card_builder-qt-windows.zip: Qt app and command line tool for Windows (sb_card_builder.exe, sb_card_cli.exe)
+        - sb_card_builder.py: Python version (Python 3.9+, run with no arguments for the GUI)
+        The web version is at https://computergeek1507.github.io/sb_player_esp/
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sb_card_builder-qt-windows
+          path: qt
+
+      - name: Package
+        run: (cd qt && zip -qr ../sb_card_builder-qt-windows.zip .)
+
+      - name: Update rolling release
+        run: |
+          printf '%s\n\nBuilt from %s on %s.\n' "$NOTES" "$GITHUB_SHA" "$(date -u '+%Y-%m-%d %H:%M UTC')" > notes.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh api -X PATCH "repos/$GH_REPO/git/refs/tags/$TAG" -f sha="$GITHUB_SHA" -F force=true
+            gh release edit "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --title "$TITLE" --notes-file notes.md
+          fi
+          gh release upload "$TAG" sb_card_builder-qt-windows.zip --clobber

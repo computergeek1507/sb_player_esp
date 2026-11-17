@@ -2,6 +2,13 @@
 
 An FSEQ sequence player for the ESP32-P4 that drives holiday and animated light displays. Reads `.fseq` v2 files from an SD card and streams channel data out over E1.31 (sACN) and/or DDP to LED controllers, with synchronized audio playback and a time-based scheduler.
 
+## Downloads
+
+Rolling builds of `main`, updated automatically by GitHub Actions on every push:
+
+- **Firmware** - [firmware-latest](https://github.com/computergeek1507/sb_player_esp/releases/tag/firmware-latest): `SBPlayer.ino.bin` (update), `littlefs.bin` (web pages), `SBPlayer.ino.merged.bin` (first flash over USB)
+- **SB Card Builder** - [builder-latest](https://github.com/computergeek1507/sb_player_esp/releases/tag/builder-latest): Flutter and Qt Windows apps, and the Python script; the web version is at <https://computergeek1507.github.io/sb_player_esp/>
+
 ## Features
 
 - **FSEQ v2 playback** — reads uncompressed sequences from SD card, frame-accurate timing via FreeRTOS tasks
@@ -73,7 +80,7 @@ Production files for JLCPCB are in `hardware/jlcpcb/`.
 - Adafruit SSD1306
 - RTClib
 
-The GitHub Actions workflow `.github/workflows/firmware.yml` builds the firmware with arduino-cli (ESP32 core 3.2.0, default partition scheme) and a `littlefs.bin` of the web pages; both are attached to each run as the `SBPlayer-firmware` download.
+The GitHub Actions workflow `.github/workflows/firmware.yml` builds the firmware with arduino-cli (ESP32 core 3.3.8, default partition scheme) and a `littlefs.bin` of the web pages; both are attached to each run as the `SBPlayer-firmware` download.
 
 **Build and flash**:
 1. Open `firmware/SBPlayer/SBPlayer.ino` in Arduino IDE
@@ -138,7 +145,9 @@ flutter run -d chrome             # or: flutter build web      -> build\web\
 
 The web build reads and writes folders through the File System Access API, so it needs Chrome or Edge on a computer, served from `localhost` or https. The Flutter app uses the same dark color scheme as the player's web UI.
 
-To host the web build on your own web server:
+The web version is deployed to GitHub Pages by `.github/workflows/sb_card_builder_flutter.yml` on every push to `main` that changes the Flutter app: <https://computergeek1507.github.io/sb_player_esp/>.
+
+To host the web build on your own web server instead:
 
 ```
 flutter build web --release --base-href /sbcard/   # path it will be served from; omit for the site root
